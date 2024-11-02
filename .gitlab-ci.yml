@@ -1,0 +1,53 @@
+stages:
+  - build
+  - deploy
+
+default:
+  image: docker:latest
+
+build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+    LATEST_TAG: $CI_REGISTRY_IMAGE:latest
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker pull $LATEST_TAG || true
+    - docker build --no-cache -t $IMAGE_TAG -t $LATEST_TAG .
+    - docker push $IMAGE_TAG
+    - docker push $LATEST_TAG
+  only:
+    - staging
+  
+deploy:
+  stage: deploy
+  image: alpine:latest
+  when: on_success
+  only:
+    - staging
+  before_script:
+  - 'command -v ssh-agent >/dev/null || ( apk add --update openssh )' 
+  - eval $(ssh-agent -s)
+  - echo -e "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+  - mkdir -p ~/.ssh
+  - chmod 700 ~/.ssh
+  - echo $SERVER_IP
+  - ssh-keyscan $SERVER_IP >> ~/.ssh/known_hosts
+  - chmod 644 ~/.ssh/known_hosts
+  script:
+    - ssh deployer@$SERVER_IP echo "Dah Masuk Server"
+    - ssh deployer@$SERVER_IP bash -c "
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY && 
+        if [ ! -d /home/deployer/fe ]; then 
+          git clone https://$USERNAME:$TOKEN@gitlab.com/lms-digitefa/fe.git /home/deployer/fe; 
+        fi; 
+        cd /home/deployer/fe; 
+        git pull origin staging; 
+        sudo docker compose down;
+        sudo docker compose build app; 
+        sudo docker compose up -d
+      "

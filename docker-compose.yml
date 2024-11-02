@@ -1,0 +1,34 @@
+version: "3.7"
+services:
+  app:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    image: client-side
+    container_name: client-side-container
+    restart: unless-stopped
+    ports:
+      - 8800:80
+    environment:
+      - VUE_APP_API_URL=https://api-dev-lms.digitefa.id/api
+      - VUE_APP_BACKEND_URL=https://api-dev-lms.digitefa.id
+    working_dir: /app
+    volumes:
+      - ./:/app
+    networks:
+      - client-side
+
+  nginx:
+    image: nginx:alpine
+    container_name: client-side-nginx
+    restart: unless-stopped
+    ports:
+      - 3000:80
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - client-side
+
+networks:
+  client-side:
+    driver: bridge
